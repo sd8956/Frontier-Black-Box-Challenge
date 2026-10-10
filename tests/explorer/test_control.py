@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Explorer self-test.
 
-Runs with ``python3 explorer/test_control.py``. It uses a fake transport and an
+Runs with ``python3 tests/explorer/test_control.py``. It uses a fake transport and an
 in-memory log: it touches neither the network nor ``experimentos.jsonl``. It
 prints one line per test and exits with a non-zero code if anything fails.
 """
@@ -12,7 +12,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 

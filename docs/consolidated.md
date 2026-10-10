@@ -151,7 +151,10 @@ reto-2/
     serializer.py    status y cuerpo exactos
     cli.py           crear, registrar, revocar, listar
   migrations/        las cuatro tablas y las políticas de RLS
-  explorer/
+  explorer/          el sondeo: cliente, bitácora, corrida
+  tests/
+    api/             rejuego de los 20 ejemplos y comprobaciones puntuales
+    explorer/        arnés del sondeo, con transporte falso y sin red
   docs/
 ```
 

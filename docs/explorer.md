@@ -90,6 +90,8 @@ reto-2/explorer/
   log.py
   run.py
   watch.py
+reto-2/tests/explorer/
+  test_control.py    arnés del sondeo, con transporte falso y sin red
 ```
 
 El API no importa esta carpeta ni la llama.

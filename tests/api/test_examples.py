@@ -12,7 +12,7 @@ false creation consumes `AC-0001` and moves the ids of steps 3 and 4. They are
 known differences, not hidden failures. It exits with a non-zero code only if a
 step outside that set fails.
 
-Runs with: ``python3 tests/test_examples.py``
+Runs with: ``python3 tests/api/test_examples.py``
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import json
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
