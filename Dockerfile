@@ -18,10 +18,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 # outside the image.
 COPY api ./api
 
-# Never root. A numeric uid, on purpose: the process writes nothing to disk
-# (PYTHONDONTWRITEBYTECODE is on and the service keeps no local state), so no
-# account has to exist, and the image does not depend on `useradd` being in the
-# slim base. /app is world-readable, which is all the app needs.
+# Never root, and never dependent on `useradd` existing in the slim base: the
+# account is created when the tool is there, and the numeric uid works either
+# way. HOME is set explicitly because no account lookup (pwd, getpass) is
+# guaranteed to resolve for a bare uid; the process writes nothing to disk and
+# /tmp is the only world-writable place the image guarantees.
+RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser \
+    || echo "useradd is not available in this base: running as a bare numeric uid"
+ENV HOME=/tmp
 USER 10001:10001
 
 # No secret is baked in: DATABASE_URL and REGISTRO_PEPPER arrive at run time.
