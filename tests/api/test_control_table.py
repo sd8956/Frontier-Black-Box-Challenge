@@ -27,7 +27,10 @@ from api.domain.pipeline import (  # noqa: E402
     MeasuredControls,
     _CONTROL_TABLE,
     _CONTROL_TABLE_PATH,
+    process,
 )
+from api.serializer import serialize  # noqa: E402
+from api.state import MemoryState  # noqa: E402
 
 TABLE_PATH = ROOT / "api" / "control_table.json"
 
@@ -42,19 +45,23 @@ def test(name):
     return decorator
 
 
-@test("the table loads: object of sorted control lists")
+@test("the table loads: object of payloads with sorted accept/reject lists")
 def _t_loads():
     assert TABLE_PATH.is_file(), TABLE_PATH
     raw = json.loads(TABLE_PATH.read_text(encoding="utf-8"))
     assert isinstance(raw, dict), type(raw)
-    for base, controls in raw.items():
+    for base, entry in raw.items():
         assert isinstance(base, str), base
-        assert isinstance(controls, list), (base, controls)
-        assert all(isinstance(control, int) for control in controls), (
-            base,
-            controls,
-        )
-        assert controls == sorted(controls), (base, controls)
+        assert set(entry) == {"accept", "reject"}, (base, entry)
+        for key in ("accept", "reject"):
+            controls = entry[key]
+            assert isinstance(controls, list), (base, key, controls)
+            assert all(isinstance(control, int) for control in controls), (
+                base,
+                key,
+                controls,
+            )
+            assert controls == sorted(controls), (base, key, controls)
     # The loader read the same file the repository ships.
     assert _CONTROL_TABLE_PATH == TABLE_PATH, (
         _CONTROL_TABLE_PATH,
@@ -64,21 +71,14 @@ def _t_loads():
     assert len(raw) == 76, len(raw)
 
 
-@test("PING accepts its measured control 64 and rejects 65")
-def _t_ping():
+@test("case 1: a non-numeric control is rejected")
+def _t_not_numeric():
     strategy = MeasuredControls()
-    assert strategy.accept("PING;64", "64") is True
-    assert strategy.accept("PING;65", "65") is False
+    assert strategy.accept("ALTA;Lucia;82", "8X") is False
+    assert strategy.accept("NUNCA;SONDEADO;7", "") is False
 
 
-@test("ALTA;Lucia accepts its measured control 82 and rejects 83")
-def _t_lucia():
-    strategy = MeasuredControls()
-    assert strategy.accept("ALTA;Lucia;82", "82") is True
-    assert strategy.accept("ALTA;Lucia;83", "83") is False
-
-
-@test("an unmeasured payload still accepts any numeric control")
+@test("case 2: an unmeasured payload still accepts any numeric control")
 def _t_unmeasured():
     strategy = MeasuredControls()
     assert strategy.accept("NUNCA;SONDEADO;7", "7") is True
@@ -86,15 +86,40 @@ def _t_unmeasured():
     assert strategy.accept("NUNCA;SONDEADO;7", "not-numeric") is False
 
 
-@test("a payload with no known accepted control falls back, it does not reject everything")
-def _t_empty():
+@test("case 3: a non-empty accept list accepts only its control and rejects the rest")
+def _t_lucia():
+    strategy = MeasuredControls()
+    assert strategy.accept("ALTA;Lucia;82", "82") is True
+    assert strategy.accept("ALTA;Lucia;83", "83") is False
+
+
+@test("PING accepts its measured control 64 and rejects 65")
+def _t_ping():
+    strategy = MeasuredControls()
+    assert strategy.accept("PING;64", "64") is True
+    assert strategy.accept("PING;65", "65") is False
+
+
+@test("case 4: an empty accept list rejects the probed controls and accepts the rest")
+def _t_empty_accept():
     raw = json.loads(TABLE_PATH.read_text(encoding="utf-8"))
-    # Kept on purpose: this payload was probed with a single control (66) and
-    # rejected, which says nothing about the rest of the space. Treating it as
-    # "rejects everything" would turn one rejected probe into a wrong answer
-    # for a control the original may accept, so it counts as unmeasured.
-    assert raw["ANULA;OP-9999"] == [], raw["ANULA;OP-9999"]
-    assert MeasuredControls().accept("ANULA;OP-9999;66", "66") is True
+    # Kept on purpose: this payload was probed with control 1 and rejected, so
+    # 1 is a measured rejection while the rest of the space is unmeasured.
+    assert raw["ALTA;X;Y;Z"] == {"accept": [], "reject": [1]}, raw["ALTA;X;Y;Z"]
+    strategy = MeasuredControls()
+    assert strategy.accept("ALTA;X;Y;Z;1", "1") is False
+    assert strategy.accept("ALTA;X;Y;Z;2", "2") is True
+    assert strategy.accept("ANULA;OP-9999;66", "66") is False
+    assert strategy.accept("ANULA;OP-9999;67", "67") is True
+
+
+@test("ALTA;X;Y;Z;1 answers E202, not E302")
+def _t_x_y_z_pipeline():
+    status, body = serialize(process("ALTA;X;Y;Z;1", MemoryState(), Configuration()))
+    assert (status, body) == (
+        400,
+        {"error": "E202", "mensaje": "control inválido"},
+    ), (status, body)
 
 
 @test("the shipped default strategy is the measured one")

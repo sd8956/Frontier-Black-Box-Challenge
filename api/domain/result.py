@@ -68,6 +68,16 @@ class AlreadyAnnulled(Result):
 # --- validation errors ---------------------------------------------------
 
 @dataclass(frozen=True)
+class MissingControl(Result):
+    """FaltaControl -> 400 {"error": "E103", "mensaje": "falta control"}.
+
+    Measured twice, on ids 2340 (`m` = `PING`) and 2341 (`m` = `""`): a
+    message with no `;` at all is answered with E103. It wins over both the
+    empty-segment and the control errors.
+    """
+
+
+@dataclass(frozen=True)
 class EmptySegment(Result):
     """SegmentoVacio -> 400 {"error": "E104", "mensaje": "segmento vacío"}.
 

@@ -79,7 +79,7 @@ Recibe el mensaje y el cliente autenticado y devuelve un resultado tipado. No co
 - Es determinista y función pura del mensaje. Payloads repetidos dan el mismo control aunque el estado del cliente haya cambiado, así que no es un nonce ni un contador.
 - No distingue mayúsculas: `CONSULTa;AC-0001;14` y `CONSULTA;AC-0001;14` dan el mismo control.
 - No es un checksum barato. Se probaron offline unas 30 funciones sobre los 20 ejemplos —suma de ordinales, suma ponderada por posición, suma de dígitos, XOR, hashes polinómicos en base 7, 17, 31, 33 y 131, CRC32, Adler32, MD5, SHA1 y SHA256— cruzadas con cinco normalizaciones (crudo, mayúsculas, minúsculas, sin `;` y el mensaje completo), buscando módulo puro para cada `m` entre 2 y 1000 y transformaciones afines módulo 10, 100, 1000, 256, 97, 101 y 128. Cero coincidencias. Se aprende sondeando con el oráculo, no deduciendo.
-- Mientras no esté la fórmula, el default es la tabla medida (`MeasuredControls`): para un payload sondeado acepta solo el control que la tabla registró y rechaza el resto; para uno no sondeado, aceptar cualquier control numérico sigue siendo un supuesto declarado, escrito como tal.
+- Mientras no esté la fórmula, el default es la tabla medida (`MeasuredControls`) con cuatro casos, en este orden: (1) control no numérico → rechaza; (2) payload ausente de la tabla → acepta cualquier control numérico (supuesto declarado); (3) payload con lista `accept` no vacía → acepta solo los controles de esa lista y rechaza el resto (medido: el control válido es un valor único en cada payload sondeado); (4) payload con lista `accept` vacía → rechaza los controles de su lista `reject` y acepta el resto (lo medido es la lista `reject`; lo demás vuelve al supuesto declarado, para no convertir una sonda rechazada en un rechazo de todo el espacio).
 
 <!-- /callout -->
 
@@ -99,6 +99,7 @@ El serializador escribe respuestas literales, nunca construidas por concatenaci�
 | OperacionAceptada(id) | 200 | `{"status": "recieved", "operacionId": id}` |
 | Anulada(id) | 200 | `{"ok": true, "anulada": id}` |
 | YaAnulada | 200 | `{"ok": false, "motivo": "ya anulada"}` |
+| FaltaControl | 400 | `{"error": "E103", "mensaje": "falta control"}` |
 | ControlMalFormado | 400 | `{"error": "E201", "mensaje": "control mal formado"}` |
 | ControlInvalido | 400 | `{"error": "E202", "mensaje": "control inválido"}` |
 | ComandoDesconocido | 400 | `{"error": "E301", "mensaje": "comando desconocido "}` |
@@ -274,3 +275,4 @@ No son reglas.
 - Cuerpo de `/health`.
 - 503 cuando fallamos nosotros; que `ANULA` devuelva el saldo al revertir; que un error no consuma el id. Los ejemplos lo muestran; probable hasta repetirlo.
 - `E104` (`{"error": "E104", "mensaje": "segmento vacío"}`) ante un segmento vacío: medido una sola vez, en `PING;64;`; probable hasta repetirlo.
+- `E103` (`{"error": "E103", "mensaje": "falta control"}`) ante un mensaje sin ningún `;`: medido dos veces, ids 2340 (`PING`) y 2341 (`""`). Corre antes de `E104` por esas dos sondas, no por una fórmula.

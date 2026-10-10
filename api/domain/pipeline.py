@@ -6,7 +6,8 @@ in an ordered, configurable list because the real order between them is NOT
 confirmed: it is changed in a single place (`Configuration.stages`).
 
 Each stage is a small function that returns a `Result` to stop or `None` to
-continue. Default order: control, command, arity, business.
+continue. Default order: missing-control, empty-segment, control, command,
+arity, business.
 
 The control table (`api/control_table.json`) is generated from
 `experimentos.jsonl`, never hand-written. Generator rule, exactly:
@@ -15,11 +16,12 @@ The control table (`api/control_table.json`) is generated from
     `;`;
   - split off the last field with `explorer.log.payload_of` (`base`,
     `control`);
-  - a record counts as accepted when
-    `explorer.log.is_control_accepted(record["response"])` is true;
-  - map each `base` to the sorted list of controls accepted for it. A base
-    whose list is empty is kept on purpose: the emptiness is a measurement,
-    not a missing entry.
+  - a record whose `explorer.log.is_control_accepted(record["response"])` is
+    true adds its control to `accept`; a record whose response error is
+    `E202` adds it to `reject`;
+  - map each `base` to both sorted lists. A base with an empty `accept` list
+    is kept on purpose: it was probed and the probe was rejected, which is a
+    measurement, not a missing entry.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ from api.domain.result import (
     InvalidControl,
     EmptySegment,
     MalformedControl,
+    MissingControl,
     Result,
 )
 
@@ -61,7 +64,9 @@ def is_numeric_control(control: str) -> bool:
 _CONTROL_TABLE_PATH = Path(__file__).resolve().parent.parent / "control_table.json"
 
 
-def _load_control_table(path: Path = _CONTROL_TABLE_PATH) -> dict[str, frozenset]:
+def _load_control_table(
+    path: Path = _CONTROL_TABLE_PATH,
+) -> dict[str, tuple[frozenset, frozenset]]:
     """Loads the measured control oracle, or fails loudly.
 
     There is no fallback: a missing table would silently turn the measured
@@ -77,7 +82,10 @@ def _load_control_table(path: Path = _CONTROL_TABLE_PATH) -> dict[str, frozenset
             "experimentos.jsonl; refusing to fall back to accepting every "
             "control." % path
         ) from error
-    return {base: frozenset(controls) for base, controls in raw.items()}
+    return {
+        base: (frozenset(entry["accept"]), frozenset(entry["reject"]))
+        for base, entry in raw.items()
+    }
 
 
 _CONTROL_TABLE = _load_control_table()
@@ -144,20 +152,23 @@ class AcceptAnyNumericControl(ControlStrategy):
 class MeasuredControls(ControlStrategy):
     """Default: the measured table, with a declared fallback.
 
-    Measured half: for every payload the explorer probed, the accepted
-    controls are in ``control_table.json``. A payload present in the table
-    accepts only the controls listed for it; every other control is rejected.
+    The decision has four cases, in this order:
 
-    Declared half: a payload absent from the table was never probed, so there
-    is no measurement for it. Accepting any numeric control there is the same
-    assumption :class:`AcceptAnyNumericControl` declares; it is written as an
-    assumption, not as a fact.
-
-    A payload whose list is **empty** is treated as unmeasured, not as
-    "rejects everything": five payloads were probed with a single control and
-    rejected, which says nothing about the rest of the space. Rejecting all of
-    them would turn one rejected probe into a false answer for a control the
-    original may well accept.
+    1. the control is not numeric -> rejected. Measured: the accepted control
+       is always numeric, so a non-numeric one can never be it;
+    2. the payload is absent from the table -> accepted (any numeric control).
+       Declared assumption: that payload was never probed, so there is no
+       measurement for it; accepting repeats the assumption
+       :class:`AcceptAnyNumericControl` declares;
+    3. the payload is present with a non-empty ``accept`` list -> accepted only
+       when the control is in that list, rejected otherwise. Measured: the
+       explorer swept those payloads and found their single valid control, so
+       an unlisted control is a measured rejection;
+    4. the payload is present with an empty ``accept`` list -> rejected when
+       the control is in its ``reject`` list, accepted otherwise. Measured
+       half: the ``reject`` list is what the explorer probed and saw rejected
+       with E202. Declared half: the rest of the space was never probed, so it
+       keeps the declared assumption instead of rejecting everything.
 
     The formula is still unknown; the table is only the sample of it the
     explorer measured.
@@ -166,10 +177,13 @@ class MeasuredControls(ControlStrategy):
     def accept(self, message: str, control: str) -> bool:
         if not is_numeric_control(control):
             return False
-        measured = _CONTROL_TABLE.get(_payload_base(message))
-        if not measured:
+        entry = _CONTROL_TABLE.get(_payload_base(message))
+        if entry is None:
             return True
-        return int(control) in measured
+        accepted, rejected = entry
+        if accepted:
+            return int(control) in accepted
+        return int(control) not in rejected
 
 
 # --- context -------------------------------------------------------------
@@ -202,11 +216,26 @@ Stage = Callable[[Context], "Result | None"]
 
 # --- stages --------------------------------------------------------------
 
+def missing_control_stage(context: Context) -> Result | None:
+    """A message with no `;` at all is E103, before any other error.
+
+    Measured twice: id 2340 (`m` = `PING`) and id 2341 (`m` = `""`) both
+    answer 400 E103 `falta control`. The stage runs before the empty-segment
+    stage so that a message with no `;` gets E103 while `PING;64;` keeps its
+    measured E104. The order against E104 follows from those two probes, not
+    from a formula.
+    """
+    if ";" not in context.message:
+        return MissingControl()
+    return None
+
+
 def empty_segment_stage(context: Context) -> Result | None:
     """Any empty segment wins over the control error.
 
-    Measured once: `PING;64;` answers E104 and not E201. The stage runs first
-    so the empty segment wins, as measured. Assumption until it is repeated.
+    Measured once: `PING;64;` answers E104 and not E201. The stage runs before
+    the control stage so the empty segment wins, as measured. Assumption until
+    it is repeated.
     """
     if any(field == "" for field in context.fields):
         return EmptySegment()
@@ -254,6 +283,7 @@ def business_stage(context: Context) -> Result | None:
 
 
 DEFAULT_ORDER: list[Stage] = [
+    missing_control_stage,
     empty_segment_stage,
     control_stage,
     command_stage,

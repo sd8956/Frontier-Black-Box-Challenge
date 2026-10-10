@@ -253,6 +253,23 @@ def _t_annul_already():
     }, (status, body)
 
 
+@test("a message with no separator is E103; PING;64; stays E104")
+def _t_missing_control():
+    state = MemoryState()
+    configuration = Configuration()
+    for message in ("PING", ""):
+        status, body = serialize(process(message, state, configuration))
+        assert (status, body) == (
+            400,
+            {"error": "E103", "mensaje": "falta control"},
+        ), (message, status, body)
+    status, body = serialize(process("PING;64;", state, configuration))
+    assert (status, body) == (
+        400,
+        {"error": "E104", "mensaje": "segmento vacío"},
+    ), (status, body)
+
+
 def run_tests() -> int:
     failures = 0
     for name, function in TESTS:
