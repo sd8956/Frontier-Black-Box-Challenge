@@ -18,9 +18,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # outside the image.
 COPY api ./api
 
-# Never root: run as an unprivileged, dedicated user.
-RUN useradd --create-home --uid 10001 appuser
-USER appuser
+# Never root. A numeric uid, on purpose: the process writes nothing to disk
+# (PYTHONDONTWRITEBYTECODE is on and the service keeps no local state), so no
+# account has to exist, and the image does not depend on `useradd` being in the
+# slim base. /app is world-readable, which is all the app needs.
+USER 10001:10001
 
 # No secret is baked in: DATABASE_URL and REGISTRO_PEPPER arrive at run time.
 EXPOSE 8080
