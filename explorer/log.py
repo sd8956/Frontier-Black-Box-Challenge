@@ -2,7 +2,8 @@
 
 Exact fields: ``id``, ``seq``, ``x_req``, ``hipotesis``, ``request``,
 ``status``, ``response`` and ``conclusion`` (optional). The token and the
-``Authorization`` header are never written.
+``Authorization`` header are never written: every record passes through
+:func:`scrub`, which replaces any configured secret with ``<oculto>``.
 
 The hypothesis is passed by the caller, before the request. This module does
 not invent it.
@@ -11,10 +12,60 @@ not invent it.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PATH = ROOT / "experimentos.jsonl"
+
+# Never written to the log, whatever field they arrive in.
+SECRET_KEYS = ("BLACK_BOX_TOKEN", "TEAM_TOKEN", "DB_PASS", "REGISTRO_PEPPER")
+HIDDEN = "<oculto>"
+_SECRETS = None
+
+
+def _collect_secrets():
+    """Every configured secret, from the environment and from ``reto-2/.env``."""
+    values = set()
+    for key in SECRET_KEYS:
+        value = os.environ.get(key)
+        if value:
+            values.add(value)
+    try:
+        from .client import ENV_PATH, _read_env
+    except ImportError:  # run as a standalone script
+        from client import ENV_PATH, _read_env  # type: ignore
+    data = _read_env(ENV_PATH)
+    for key in SECRET_KEYS:
+        value = data.get(key)
+        if value:
+            values.add(value)
+    return {value for value in values if len(value) >= 8}
+
+
+def scrub(node, secrets=None):
+    """Replaces every configured secret with ``<oculto>``, at any depth.
+
+    A one-off probe script once wrote the ``Authorization`` header straight
+    into the log and the token ended up published. The token is deliberately
+    not part of the record schema, so this is a second line of defence for
+    anything a caller passes through ``request``.
+    """
+    global _SECRETS
+    if secrets is None:
+        if _SECRETS is None:
+            _SECRETS = _collect_secrets()
+        secrets = _SECRETS
+    if isinstance(node, str):
+        for secret in secrets:
+            if secret and secret in node:
+                node = node.replace(secret, HIDDEN)
+        return node
+    if isinstance(node, dict):
+        return {key: scrub(value, secrets) for key, value in node.items()}
+    if isinstance(node, list):
+        return [scrub(value, secrets) for value in node]
+    return node
 
 
 def payload_of(message):
@@ -103,7 +154,7 @@ class ExperimentLogBase:
         record = self._build(
             seq, x_req, hipotesis, request, status, response, conclusion, id
         )
-        self._append(record)
+        self._append(scrub(record))
         return record["id"]
 
     def accepted_controls(self):

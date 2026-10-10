@@ -16,11 +16,13 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from explorer import log as log_module  # noqa: E402
 from explorer.log import (  # noqa: E402
     ExperimentLog,
     InMemoryLog,
     is_control_accepted,
     payload_of,
+    scrub,
 )
 from explorer.client import Client, RateLimiter  # noqa: E402
 from explorer.run import InfrastructureLimit, control_plan, resolve_control  # noqa: E402
@@ -229,6 +231,32 @@ def _t_dry_run():
     assert report["order_independent"] is True, report["order_independent"]
     assert log.records == [], "dry_run must not write"
     assert client.calls, "the plan must query the fake client"
+
+
+@test("el log oculta un secreto escrito a mano en el request")
+def _t_scrub():
+    secret = "cn-p-secreto-de-prueba-1234567890"
+    previous = log_module._SECRETS
+    log_module._SECRETS = {secret}
+    try:
+        log = InMemoryLog()
+        log.record(
+            "rutas",
+            None,
+            "probe manual que escribe el header crudo",
+            {"method": "POST", "path": "/msg", "auth": "Bearer " + secret},
+            401,
+            {"error": "E001"},
+            "sin Bearer",
+        )
+    finally:
+        log_module._SECRETS = previous
+    record = log.records[0]
+    assert secret not in repr(record), "the secret reached the log"
+    assert record["request"]["auth"] == "Bearer <oculto>", record["request"]
+    nested = scrub({"a": [{"b": "HEADER " + secret + " FIN"}]}, {secret})
+    assert nested == {"a": [{"b": "HEADER <oculto> FIN"}]}, nested
+    assert scrub("Bearer token-que-no-existe", {secret}) == "Bearer token-que-no-existe"
 
 
 def run_tests():
