@@ -86,12 +86,15 @@ def _t_unmeasured():
     assert strategy.accept("NUNCA;SONDEADO;7", "not-numeric") is False
 
 
-@test("an empty measured payload rejects every control")
+@test("a payload with no known accepted control falls back, it does not reject everything")
 def _t_empty():
     raw = json.loads(TABLE_PATH.read_text(encoding="utf-8"))
-    # Kept on purpose: no probe for this payload was accepted.
+    # Kept on purpose: this payload was probed with a single control (66) and
+    # rejected, which says nothing about the rest of the space. Treating it as
+    # "rejects everything" would turn one rejected probe into a wrong answer
+    # for a control the original may accept, so it counts as unmeasured.
     assert raw["ANULA;OP-9999"] == [], raw["ANULA;OP-9999"]
-    assert MeasuredControls().accept("ANULA;OP-9999;66", "66") is False
+    assert MeasuredControls().accept("ANULA;OP-9999;66", "66") is True
 
 
 @test("the shipped default strategy is the measured one")

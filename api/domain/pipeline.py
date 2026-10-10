@@ -147,13 +147,17 @@ class MeasuredControls(ControlStrategy):
     Measured half: for every payload the explorer probed, the accepted
     controls are in ``control_table.json``. A payload present in the table
     accepts only the controls listed for it; every other control is rejected.
-    A payload with an empty list was probed and every probe was rejected, so
-    it rejects every control: that emptiness is a measurement too.
 
     Declared half: a payload absent from the table was never probed, so there
     is no measurement for it. Accepting any numeric control there is the same
     assumption :class:`AcceptAnyNumericControl` declares; it is written as an
     assumption, not as a fact.
+
+    A payload whose list is **empty** is treated as unmeasured, not as
+    "rejects everything": five payloads were probed with a single control and
+    rejected, which says nothing about the rest of the space. Rejecting all of
+    them would turn one rejected probe into a false answer for a control the
+    original may well accept.
 
     The formula is still unknown; the table is only the sample of it the
     explorer measured.
@@ -163,7 +167,7 @@ class MeasuredControls(ControlStrategy):
         if not is_numeric_control(control):
             return False
         measured = _CONTROL_TABLE.get(_payload_base(message))
-        if measured is None:
+        if not measured:
             return True
         return int(control) in measured
 
