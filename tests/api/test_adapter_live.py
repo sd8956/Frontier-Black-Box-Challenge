@@ -13,8 +13,9 @@ reads, revokes or lists another client's secret.
 
 Covered, with the numbers it observes:
 
-  - the 20 recorded examples replayed through the whole stack over HTTP,
-    requiring 20 of 20 with the recorded control strategy;
+  - the 20 recorded examples replayed through the whole stack over HTTP against
+    the version-2 oracle (``tests/api/ejemplos_v2.jsonl``), requiring 20 of 20
+    with the recorded control strategy;
   - an unknown token is 401;
   - a revoked token is 401;
   - ``POST /__reset`` really clears one client (the balance is gone) while the
@@ -47,7 +48,7 @@ from api.domain.pipeline import Configuration, ControlStrategy  # noqa: E402
 from api.ledger import Book  # noqa: E402
 from api.registry import Registry, hash_token  # noqa: E402
 
-EXAMPLES_PATH = ROOT / "material" / "pruebas" / "ejemplos.jsonl"
+EXAMPLES_PATH = ROOT / "tests" / "api" / "ejemplos_v2.jsonl"
 
 E001_BODY = {"error": "E001", "mensaje": "no autorizado"}
 E401_BODY = {"error": "E401", "mensaje": "cuenta inexistente"}
@@ -289,7 +290,7 @@ def _case_reset_isolation(fixture: Fixture) -> str:
     status, body = harness.call(
         "POST", "/msg", auth=auth_a, json_body={"m": "CONSULTA;AC-0001;1"}
     )
-    assert status == 200 and body.get("saldo") == 700, (status, body)
+    assert status == 200 and body.get("saldo") == "7.00", (status, body)
 
     status, body = harness.call(
         "POST", "/msg", auth=auth_b, json_body={"m": "ALTA;Beto;1"}
@@ -311,8 +312,8 @@ def _case_reset_isolation(fixture: Fixture) -> str:
     status, body = harness.call(
         "POST", "/msg", auth=auth_b, json_body={"m": "CONSULTA;AC-0001;1"}
     )
-    assert status == 200 and body.get("saldo") == 300, (status, body)
-    return "A's balance gone after reset; B kept AC-0001/300"
+    assert status == 200 and body.get("saldo") == "3.00", (status, body)
+    return "A's balance gone after reset; B kept AC-0001/3.00"
 
 
 CASES = (

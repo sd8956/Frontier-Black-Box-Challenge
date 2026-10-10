@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # DATABASE_URL or DB_URL they print one SKIP line and pass.
 SUITES = (
     ("api", ROOT / "tests" / "api" / "test_examples.py"),
+    ("v2", ROOT / "tests" / "api" / "test_v2.py"),
     ("adapter", ROOT / "tests" / "api" / "test_adapter.py"),
     ("ledger", ROOT / "tests" / "api" / "test_ledger.py"),
     ("registry", ROOT / "tests" / "api" / "test_registry.py"),

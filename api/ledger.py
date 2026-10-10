@@ -484,14 +484,29 @@ class Ledger(State):
         )
         return operation_id
 
+    def operation_exists(self, operation_id: str) -> bool:
+        """True if this client has that operation, annulled or not.
+
+        The guarded `update` in `annul` returns no row both for an unknown id
+        and for an already annulled one, so it cannot tell them apart on its
+        own. This read lets the domain split the two version-2 answers while
+        the book's existing tests keep pinning `annul`'s behavior.
+        """
+        self._cursor.execute(
+            "select 1 from operations "
+            "where client_id = %s and operation_id = %s",
+            (self._client_id, operation_id),
+        )
+        return self._cursor.fetchone() is not None
+
     def annul(self, operation_id: str) -> Annulment:
         """Annulls an operation and reverts its effect.
 
         The `update ... where annulled = false returning` decides "annulled
         now" or "already annulled" atomically: a row comes back only when the
         operation exists, is this client's and was not annulled. An unknown or
-        already annulled operation is `ALREADY_ANNULLED`, the documented
-        assumption.
+        already annulled operation is `ALREADY_ANNULLED`; the domain uses
+        `operation_exists` to answer 404 E402 for the unknown one (version 2).
         """
         self._cursor.execute(
             "update operations set annulled = true "

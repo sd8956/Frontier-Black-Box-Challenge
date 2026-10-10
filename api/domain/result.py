@@ -35,7 +35,12 @@ class AccountCreated(Result):
 
 @dataclass(frozen=True)
 class Balance(Result):
-    """Saldo(id, monto) -> 200 {"saldo": monto, "cuenta_id": id}."""
+    """Saldo(id, monto) -> 200 {"saldo": "<units>.<cents>", "cuenta_id": id}.
+
+    The domain keeps the amount in cents (an integer). Version 2 writes it as
+    a decimal string of units with two decimals; the serializer does that
+    conversion.
+    """
 
     account_id: str
     amount: int
@@ -96,6 +101,16 @@ class InvalidArity(Result):
 @dataclass(frozen=True)
 class AccountNotFound(Result):
     """CuentaInexistente -> 404 {"error": "E401", "mensaje": "cuenta inexistente"}."""
+
+
+@dataclass(frozen=True)
+class OperationNotFound(Result):
+    """OperacionInexistente -> 404 {"error": "E402", "mensaje": "operación inexistente"}.
+
+    Measured in version 2: annulling an operation that does not exist answers
+    404 E402. It is different from `AlreadyAnnulled`, which is the answer for an
+    operation that exists and was already annulled.
+    """
 
 
 @dataclass(frozen=True)

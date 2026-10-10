@@ -180,11 +180,12 @@ class Configuration:
         default_factory=AcceptAnyNumericControl
     )
     commands: dict[str, Command] = field(default_factory=lambda: dict(COMMANDS))
-    # Assumption: cap per operation. Example 10 (100000) is accepted and 9
-    # (120000) is rejected, so the cap is between 100000 and 120000; 100000 is
-    # chosen as the smallest consistent one. It was not confirmed whether it is
-    # per operation or accumulated.
-    operation_limit: int = 100000
+    # Measured against version 2: the cap is 50000 cents. 50000 is accepted
+    # and 50001 is rejected; the cap is per operation, not accumulated (three
+    # consecutive transfers of 40000 were all accepted). Deposits are exempt:
+    # `DEPOSITO;AC-0001;250000;86` is accepted. The measured cap replaces the
+    # version-1 assumption of 100000 (which version 1 did accept).
+    operation_limit: int = 50000
     stages: list[Stage] = field(default_factory=lambda: list(DEFAULT_ORDER))
 
 

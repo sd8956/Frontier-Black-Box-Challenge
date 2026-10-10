@@ -6,13 +6,25 @@ It is the measurement the design imposes on itself: every `request["m"]` from
 serializer, and the status and the body are compared with what was recorded.
 Fresh in-memory state per sequence.
 
-Known and declared difference: the default control validator accepts any
-numeric control. Step 2 (`ALTA;Lucia;83`) should give E202 and gives 201; that
-false creation consumes `AC-0001` and moves the ids of steps 3 and 4. They are
-known differences, not hidden failures. It exits with a non-zero code only if a
-step outside that set fails.
+This recording is version 1 and it is NOT modified: it is kept as the honest
+oracle it is. Against version 2 it disagrees on eleven steps, all of them
+declared in `KNOWN_DIFFERENCES` and explained by only three measured changes
+plus the pre-existing control default:
 
-Runs with: ``python3 tests/api/test_examples.py``
+  - the default control validator accepts any numeric control, so step 2
+    (`ALTA;Lucia;83`) gives 201 instead of the recorded E202, and its false
+    creation shifts the `AC-` counter at steps 3 and 4 (the pre-existing
+    cascade);
+  - version 2 renders `saldo` as a decimal string of units (steps 5, 8, 11 and
+    19);
+  - version 2 caps a transfer at 50000 cents, so step 10 is rejected and its
+    absence cascades into step 11 (`OP-0003` never exists, so steps 13 and 14
+    answer E402) and step 18 (the `OP-` counter is one behind);
+  - the balance at step 11 also carries the cap cascade.
+
+No step outside the declared set may fail, and the list is the complete truth
+of the comparison: the count is whatever the list leaves. Runs with:
+``python3 tests/api/test_examples.py``
 """
 
 from __future__ import annotations
@@ -31,12 +43,24 @@ from api.domain.pipeline import Configuration, process  # noqa: E402
 
 EXAMPLES_PATH = ROOT / "material" / "pruebas" / "ejemplos.jsonl"
 
-# Steps whose difference is due to the declared default of the control, not to
-# an error of the replacement. The root cause is a single one: step 2.
+# Steps where version 2 legitimately differs from the version-1 recording.
+# The list is complete: no other step may fail. There are only four root
+# causes: the pre-existing control default (step 2, whose false account
+# creation cascades to 3 and 4), the version-2 balance format, the version-2
+# 50000-cent cap (whose rejected transfer cascades), and the cap's effect on
+# the balance at step 11.
 KNOWN_DIFFERENCES = {
     2: "the default accepts control 83: it responds 201 and not the recorded E202",
     3: "cascade: the false creation of step 2 consumed AC-0001",
     4: "cascade: the false creation of step 2 moved the AC- counter on",
+    5: "balance format: version 2 answers \"0.00\" where version 1 answered 0",
+    8: "balance format: version 2 answers \"400.00\" where version 1 answered 40000",
+    10: "cap: version 2 rejects 100000 (over 50000) with E506; version 1 accepted it",
+    11: "cap cascade and balance format: the rejected step 10 left 210000 cents, not 110000, and version 2 writes \"2100.00\"",
+    13: "cap cascade: step 10 was rejected, so OP-0003 never existed and version 2 answers 404 E402",
+    14: "cap cascade: OP-0003 still does not exist, so version 2 answers 404 E402 again",
+    18: "cap cascade: the rejected step 10 advanced the OP- counter, so version 2 answers OP-0003 and not OP-0004",
+    19: "balance format: version 2 answers \"407.00\" where version 1 answered 40700",
 }
 
 
@@ -140,7 +164,10 @@ def test_annul_returns_balance() -> None:
     )
     operation = body["operacionId"]
     _, body = serialize(process(f"CONSULTA;{account};1", state, configuration))
-    _assert(body["saldo"] == 700, f"previous balance {body['saldo']} != 700")
+    _assert(
+        body["saldo"] == "7.00",
+        f"previous balance {body['saldo']!r} != '7.00'",
+    )
     status, body = serialize(process(f"ANULA;{operation};1", state, configuration))
     _assert(status == 200, f"status {status} != 200")
     _assert(
@@ -149,8 +176,8 @@ def test_annul_returns_balance() -> None:
     )
     _, body = serialize(process(f"CONSULTA;{account};1", state, configuration))
     _assert(
-        body["saldo"] == 0,
-        f"annulling did not return the balance: it was left at {body['saldo']}",
+        body["saldo"] == "0.00",
+        f"annulling did not return the balance: it was left at {body['saldo']!r}",
     )
 
 
@@ -247,7 +274,7 @@ def main() -> int:
     if not replay_ok or failures:
         print("\nresultado: FALLA")
         return 1
-    print("\nresultado: OK (sólo la diferencia conocida del control)")
+    print("\nresultado: OK (sólo las diferencias declaradas)")
     return 0
 
 

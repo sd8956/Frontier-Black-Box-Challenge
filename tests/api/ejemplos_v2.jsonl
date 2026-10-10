@@ -1,0 +1,20 @@
+{"n":1,"source_id":2395,"request":{"m":"PING;64"},"status":200,"response":{"pong":true}}
+{"n":2,"source_id":2396,"request":{"m":"ALTA;Lucia;83"},"status":400,"response":{"error":"E202","mensaje":"control inválido"}}
+{"n":3,"source_id":2397,"request":{"m":"ALTA;Lucia;82"},"status":201,"response":{"cuentaId":"AC-0001"}}
+{"n":4,"source_id":2398,"request":{"m":"ALTA;Mateo;3"},"status":201,"response":{"cuentaId":"AC-0002"}}
+{"n":5,"source_id":2399,"request":{"m":"CONSULTA;AC-0001;14"},"status":200,"response":{"cuenta_id":"AC-0001","saldo":"0.00"}}
+{"n":6,"source_id":2400,"request":{"m":"DEPOSITO;AC-0001;250000;86"},"status":200,"response":{"status":"recieved","operacionId":"OP-0001"}}
+{"n":7,"source_id":2401,"request":{"m":"TRANSFER;AC-0001;AC-0002;40000;86"},"status":200,"response":{"status":"recieved","operacionId":"OP-0002"}}
+{"n":8,"source_id":2402,"request":{"m":"CONSULTA;AC-0002;11"},"status":200,"response":{"cuenta_id":"AC-0002","saldo":"400.00"}}
+{"n":9,"source_id":2403,"request":{"m":"TRANSFER;AC-0001;AC-0002;120000;55"},"status":422,"response":{"error":"E506","mensaje":"límite excedido"}}
+{"n":10,"source_id":2404,"request":{"m":"TRANSFER;AC-0001;AC-0002;100000;12"},"status":422,"response":{"error":"E506","mensaje":"límite excedido"}}
+{"n":11,"source_id":2405,"request":{"m":"CONSULTa;AC-0001;14"},"status":200,"response":{"cuenta_id":"AC-0001","saldo":"2100.00"}}
+{"n":12,"source_id":2406,"request":{"m":"SALDOS;AC-0001;38"},"status":400,"response":{"error":"E301","mensaje":"comando desconocido "}}
+{"n":13,"source_id":2407,"request":{"m":"ANULA;OP-0003;66"},"status":404,"response":{"error":"E402","mensaje":"operación inexistente"}}
+{"n":14,"source_id":2408,"request":{"m":"ANULA;OP-0003;66"},"status":404,"response":{"error":"E402","mensaje":"operación inexistente"}}
+{"n":15,"source_id":2409,"request":{"m":"CONSULTA;AC-0009;87"},"status":404,"response":{"error":"E401","mensaje":"cuenta inexistente"}}
+{"n":16,"source_id":2410,"request":{"m":"TRANSFER;AC-0002;AC-0001;50000;23"},"status":422,"response":{"error":"E507","mensaje":"saldo insuficiente"}}
+{"n":17,"source_id":2411,"request":{"m":"DEPOSITO;AC-0002;700;5X"},"status":400,"response":{"error":"E201","mensaje":"control mal formado"}}
+{"n":18,"source_id":2412,"request":{"m":"DEPOSITO;AC-0002;700;35"},"status":200,"response":{"status":"recieved","operacionId":"OP-0003"}}
+{"n":19,"source_id":2413,"request":{"m":"CONSULTA;AC-0002;11"},"status":200,"response":{"cuenta_id":"AC-0002","saldo":"407.00"}}
+{"n":20,"source_id":2414,"request":{"m":"ALTA;Lucia;Gomez;11"},"status":400,"response":{"error":"E302","mensaje":"aridad inválida"}}

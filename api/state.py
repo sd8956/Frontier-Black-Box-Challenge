@@ -74,13 +74,17 @@ class MemoryState(State):
         self._accounts[destination].balance += amount
         return operation_id
 
+    def operation_exists(self, operation_id: str) -> bool:
+        return operation_id in self._operations
+
     def annul(self, operation_id: str) -> Annulment:
         operation = self._operations.get(operation_id)
-        # Assumption: there is no result for "nonexistent operation" in the
-        # wire table. It is treated as already annulled (it moves no money). It
-        # is an assumption, not a fact: no example annuls a nonexistent
-        # operation.
-        if operation is None or operation.annulled:
+        # Version 2 distinguishes the two cases: a nonexistent operation is
+        # `NOT_FOUND` (the wire answers 404 E402), an existing but already
+        # annulled one is `ALREADY_ANNULLED` ("ya anulada").
+        if operation is None:
+            return Annulment.NOT_FOUND
+        if operation.annulled:
             return Annulment.ALREADY_ANNULLED
         self._revert(operation)
         operation.annulled = True

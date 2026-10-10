@@ -5,7 +5,8 @@ No network beyond loopback and no external dependency. The server is started
 on port 0, driven with ``urllib`` and reset between phases. Every row of the
 frontier table measured against the original is its own case, in the measured
 order: route before token, then auth, then the ``/msg`` body. Last, the 20
-recorded examples are replayed in order over the adapter, requiring 20 of 20.
+recorded examples are replayed in order over the adapter against the version-2
+oracle (``tests/api/ejemplos_v2.jsonl``), requiring 20 of 20.
 
 The token is a test constant, never ``.env``. The control strategy is injected
 from the recorded evidence so the replay exercises the HTTP path and not the
@@ -36,7 +37,7 @@ from api.domain.pipeline import Configuration, ControlStrategy  # noqa: E402
 from api.registry import hash_token  # noqa: E402
 from api.state import MemoryState  # noqa: E402
 
-EXAMPLES_PATH = ROOT / "material" / "pruebas" / "ejemplos.jsonl"
+EXAMPLES_PATH = ROOT / "tests" / "api" / "ejemplos_v2.jsonl"
 
 # Test client and token: never read from `.env`. The pepper is a test constant
 # too, and it is never printed; the hasher is the real one from the registry.

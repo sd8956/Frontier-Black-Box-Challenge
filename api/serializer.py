@@ -25,12 +25,27 @@ from api.domain.result import (
     AccountNotFound,
     LimitExceeded,
     OperationAccepted,
+    OperationNotFound,
     Pong,
     Result,
     Balance,
     InsufficientBalance,
     AlreadyAnnulled,
 )
+
+
+def _units(amount: int) -> str:
+    """Renders cents as a decimal string of units with two decimals.
+
+    Version 2 answers `saldo` as a string in units (`250000` cents ->
+    `"2500.00"`). Integer `divmod` keeps the cents exact: no binary floating
+    point ever touches the amount, so a cent can never round wrong. Zero is
+    `"0.00"`; a negative amount keeps its sign.
+    """
+    sign = "-" if amount < 0 else ""
+    whole, cents = divmod(abs(amount), 100)
+    return f"{sign}{whole}.{cents:02d}"
+
 
 # The translation table lives here, in code, not in the database.
 # Each branch returns the literal status and body of the contract.
@@ -41,7 +56,7 @@ def serialize(result: Result) -> tuple[int, dict]:
     if isinstance(result, AccountCreated):
         return 201, {"cuentaId": result.account_id}
     if isinstance(result, Balance):
-        return 200, {"saldo": result.amount, "cuenta_id": result.account_id}
+        return 200, {"saldo": _units(result.amount), "cuenta_id": result.account_id}
     if isinstance(result, OperationAccepted):
         # "recieved" is the original's oddity. Do not correct.
         return 200, {"status": "recieved", "operacionId": result.operation_id}
@@ -62,6 +77,8 @@ def serialize(result: Result) -> tuple[int, dict]:
         return 400, {"error": "E302", "mensaje": "aridad inválida"}
     if isinstance(result, AccountNotFound):
         return 404, {"error": "E401", "mensaje": "cuenta inexistente"}
+    if isinstance(result, OperationNotFound):
+        return 404, {"error": "E402", "mensaje": "operación inexistente"}
     if isinstance(result, LimitExceeded):
         return 422, {"error": "E506", "mensaje": "límite excedido"}
     if isinstance(result, InsufficientBalance):

@@ -22,10 +22,15 @@ from enum import Enum
 
 
 class Annulment(Enum):
-    """Distinguishes "annulled now" from "was already annulled"."""
+    """Distinguishes the three outcomes of an annulment request.
+
+    `ANNULLED` is "annulled now"; `ALREADY_ANNULLED` is "exists and was
+    already annulled"; `NOT_FOUND` is "does not exist".
+    """
 
     ANNULLED = "annulled"
     ALREADY_ANNULLED = "already_annulled"
+    NOT_FOUND = "not_found"
 
 
 class State(ABC):
@@ -48,8 +53,22 @@ class State(ABC):
         """Debits source and credits destination, both existing; returns the `OP-`."""
 
     @abstractmethod
+    def operation_exists(self, operation_id: str) -> bool:
+        """True if this client has that operation.
+
+        The in-memory adapter returns `Annulment.NOT_FOUND` from `annul`
+        directly, but the SQL one cannot tell an unknown id from an already
+        annulled one from the guarded `update` alone (both return no row). This
+        read settles the difference for that port without changing the meaning
+        its existing tests pin.
+        """
+
+    @abstractmethod
     def annul(self, operation_id: str) -> Annulment:
         """Annulls an operation and reverts its effect.
 
-        `ANNULLED` if it was just annulled, `ALREADY_ANNULLED` if it already was.
+        `ANNULLED` if it was just annulled, `ALREADY_ANNULLED` if it already was
+        or if the operation is unknown (the domain uses `operation_exists` to
+        tell those two apart), `NOT_FOUND` when the adapter can already prove
+        the operation does not exist.
         """

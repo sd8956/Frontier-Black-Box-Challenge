@@ -21,6 +21,7 @@ from api.domain.result import (
     AccountNotFound,
     LimitExceeded,
     OperationAccepted,
+    OperationNotFound,
     Pong,
     Result,
     Balance,
@@ -124,9 +125,9 @@ def _transfer(arguments: list[str], env: "Environment") -> Result:
     destination_balance = env.state.read_balance(destination)
     if source_balance is None or destination_balance is None:
         return AccountNotFound()
-    # Assumption: the cap is per operation (not accumulated) and the order
-    # between cap and balance is not confirmed. Examples 9 and 16 are
-    # compatible with this order.
+    # Measured against version 2: the cap is 50000 cents, it is per operation
+    # (three consecutive 40000 transfers were all accepted), and it does not
+    # apply to deposits. 50000 is accepted and 50001 is rejected.
     if amount > env.operation_limit:
         return LimitExceeded()
     if source_balance < amount:
@@ -140,9 +141,19 @@ def _annul(arguments: list[str], env: "Environment") -> Result:
 
     Example 13: `ANULA;OP-0003;66` -> Anulada.
     Example 14: `ANULA;OP-0003;66` (again) -> YaAnulada.
+    Version 2: an id that does not exist -> OperacionInexistente (404 E402).
     """
     operation_id = arguments[0]
     result = env.state.annul(operation_id)
     if result is Annulment.ANNULLED:
         return Annulled(operation_id=operation_id)
-    return AlreadyAnnulled()
+    if result is Annulment.NOT_FOUND:
+        return OperationNotFound()
+    # `ALREADY_ANNULLED` covers two cases in the SQL port, which cannot tell
+    # them apart from the guarded update alone: an id that exists and was
+    # already annulled, and one that does not exist. Version 2 answers the
+    # first with "ya anulada" and the second with 404 E402; one read settles
+    # which one this is.
+    if env.state.operation_exists(operation_id):
+        return AlreadyAnnulled()
+    return OperationNotFound()
