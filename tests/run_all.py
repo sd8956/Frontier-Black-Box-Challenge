@@ -19,10 +19,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 # name -> the file that owns it. The names match the two components: they
-# never import each other, and neither does this runner.
+# never import each other, and neither does this runner. The offline registry
+# and adapter suites need no database; the live suites are opt-in: without
+# DATABASE_URL or DB_URL they print one SKIP line and pass.
 SUITES = (
     ("api", ROOT / "tests" / "api" / "test_examples.py"),
     ("adapter", ROOT / "tests" / "api" / "test_adapter.py"),
+    ("ledger", ROOT / "tests" / "api" / "test_ledger.py"),
+    ("registry", ROOT / "tests" / "api" / "test_registry.py"),
+    ("ledger-live", ROOT / "tests" / "api" / "test_ledger_live.py"),
+    ("registry-live", ROOT / "tests" / "api" / "test_registry_live.py"),
     ("explorer", ROOT / "tests" / "explorer" / "test_control.py"),
 )
 

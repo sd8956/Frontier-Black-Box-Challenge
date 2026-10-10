@@ -1,0 +1,4 @@
+# Runtime dependency of the API. Pinned to what is installed in the venv.
+# psycopg2 is the driver the SQL book (api/ledger.py) uses; nothing else in the
+# project needs a third-party package.
+psycopg2-binary==2.9.13
