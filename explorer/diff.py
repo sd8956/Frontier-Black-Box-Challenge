@@ -301,7 +301,7 @@ def main(argv):
         exchanges = [{"request": record["request"], "status": record["status"],
                       "response": record["response"]} for record in load_material()]
         hypothesis = lambda m: (
-            "incidente FR-0153: tras el reset, el paso %r sigue dando lo grabado "
+            "incidente FR-0153, v2 desplegada: tras el reset, el paso %r sigue dando lo grabado "
             "en la version 1" % m
         )
         measurements = replay(client, log, exchanges, "incidente", hypothesis,
@@ -310,7 +310,7 @@ def main(argv):
     elif mode == "stateless":
         exchanges = stateless_exchanges(load_corpus(), limit=limit)
         hypothesis = lambda m: (
-            "incidente FR-0153: %r no depende del estado, sigue dando lo grabado "
+            "incidente FR-0153, v2 desplegada: %r no depende del estado, sigue dando lo grabado "
             "en la version 1" % m
         )
         measurements = replay(client, log, exchanges, "incidente", hypothesis)
@@ -335,7 +335,7 @@ def main(argv):
                 matched, conclusion = None, "respuesta de infraestructura; no es evidencia"
             log.record(
                 "incidente", live.get("x_req"),
-                "incidente FR-0153: %s sigue respondiendo como en la version 1"
+                "incidente FR-0153, v2 desplegada: %s sigue respondiendo como en la version 1"
                 % (exchange["method"] + " " + exchange["path"]),
                 exchange["request"], live["status"], live["body"], conclusion,
             )
@@ -346,7 +346,7 @@ def main(argv):
     elif mode == "stateful":
         exchanges = stateful_exchanges(load_corpus(), limit=limit or 200)
         hypothesis = lambda m: (
-            "incidente FR-0153: el control de %r sigue aceptandose como en la "
+            "incidente FR-0153, v2 desplegada: el control de %r sigue aceptandose como en la "
             "version 1" % m
         )
         measurements = replay(client, log, exchanges, "incidente", hypothesis)
