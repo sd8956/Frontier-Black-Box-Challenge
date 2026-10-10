@@ -19,7 +19,7 @@ code, plus three HTML-comment directives that Markdown hides on GitHub:
 reportlab is a tool-only dependency, never a service one:
 
     python3 -m venv .venv-pdf && .venv-pdf/bin/pip install reportlab
-    .venv-pdf/bin/python tools/build_pdf.py [output.pdf]
+    .venv-pdf/bin/python tools/build_pdf.py [source.md] [output.pdf]
 """
 
 from __future__ import annotations
@@ -491,8 +491,11 @@ def build(source: Path, out: Path) -> int:
 
 
 def main() -> int:
-    out = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_OUT
-    pages = build(SOURCE, out)
+    source = Path(sys.argv[1]) if len(sys.argv) > 1 else SOURCE
+    out = Path(sys.argv[2]) if len(sys.argv) > 2 else (
+        DEFAULT_OUT if source == SOURCE else source.with_suffix(".pdf")
+    )
+    pages = build(source, out)
     shown = out.relative_to(ROOT) if out.is_absolute() and out.is_relative_to(ROOT) else out
     print("%s: %d páginas" % (shown, pages))
     return 0
