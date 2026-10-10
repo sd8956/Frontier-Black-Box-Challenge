@@ -272,3 +272,4 @@ No son reglas.
 - Orden entre aridad, control y comando; fórmula del control; si el tope es por operación o acumulado.
 - Cuerpo de `/health`.
 - 503 cuando fallamos nosotros; que `ANULA` devuelva el saldo al revertir; que un error no consuma el id. Los ejemplos lo muestran; probable hasta repetirlo.
+- `E104` (`{"error": "E104", "mensaje": "segmento vacío"}`) ante un segmento vacío: medido una sola vez, en `PING;64;`; probable hasta repetirlo.

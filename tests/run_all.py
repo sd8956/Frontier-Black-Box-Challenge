@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # never import each other, and neither does this runner.
 SUITES = (
     ("api", ROOT / "tests" / "api" / "test_examples.py"),
+    ("adapter", ROOT / "tests" / "api" / "test_adapter.py"),
     ("explorer", ROOT / "tests" / "explorer" / "test_control.py"),
 )
 

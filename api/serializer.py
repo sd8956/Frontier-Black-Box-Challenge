@@ -19,6 +19,7 @@ from api.domain.result import (
     InvalidArity,
     UnknownCommand,
     InvalidControl,
+    EmptySegment,
     MalformedControl,
     AccountCreated,
     AccountNotFound,
@@ -48,6 +49,8 @@ def serialize(result: Result) -> tuple[int, dict]:
         return 200, {"ok": True, "anulada": result.operation_id}
     if isinstance(result, AlreadyAnnulled):
         return 200, {"ok": False, "motivo": "ya anulada"}
+    if isinstance(result, EmptySegment):
+        return 400, {"error": "E104", "mensaje": "segmento vacío"}
     if isinstance(result, MalformedControl):
         return 400, {"error": "E201", "mensaje": "control mal formado"}
     if isinstance(result, InvalidControl):

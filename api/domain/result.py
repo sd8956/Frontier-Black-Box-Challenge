@@ -63,6 +63,15 @@ class AlreadyAnnulled(Result):
 # --- validation errors ---------------------------------------------------
 
 @dataclass(frozen=True)
+class EmptySegment(Result):
+    """SegmentoVacio -> 400 {"error": "E104", "mensaje": "segmento vacío"}.
+
+    Measured once, on `PING;64;`: the original answers E104 and not the
+    control error. Stated as an assumption until it is repeated.
+    """
+
+
+@dataclass(frozen=True)
 class MalformedControl(Result):
     """ControlMalFormado -> 400 {"error": "E201", "mensaje": "control mal formado"}."""
 

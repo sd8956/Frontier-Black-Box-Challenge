@@ -21,6 +21,7 @@ from api.domain.result import (
     InvalidArity,
     UnknownCommand,
     InvalidControl,
+    EmptySegment,
     MalformedControl,
     Result,
 )
@@ -109,6 +110,17 @@ Stage = Callable[[Context], "Result | None"]
 
 # --- stages --------------------------------------------------------------
 
+def empty_segment_stage(context: Context) -> Result | None:
+    """Any empty segment wins over the control error.
+
+    Measured once: `PING;64;` answers E104 and not E201. The stage runs first
+    so the empty segment wins, as measured. Assumption until it is repeated.
+    """
+    if any(field == "" for field in context.fields):
+        return EmptySegment()
+    return None
+
+
 def control_stage(context: Context) -> Result | None:
     """The control is non-empty and numeric; then the strategy decides."""
     if not is_numeric_control(context.control):
@@ -150,6 +162,7 @@ def business_stage(context: Context) -> Result | None:
 
 
 DEFAULT_ORDER: list[Stage] = [
+    empty_segment_stage,
     control_stage,
     command_stage,
     arity_stage,
