@@ -1,15 +1,21 @@
 # La caja negra — Diseño y arquitectura del reemplazo
 
+Documento de diseño técnico para el reemplazo fiel de un servicio HTTP en producción sin código fuente ni documentación.
+
 ## 1. Contexto y objetivo
 
 Un servicio HTTP lleva años en producción sin código fuente ni documentación. Lo usan clientes reales, mueve dinero real y sostiene operaciones reales. El objetivo es un reemplazo que, ante el mismo request, devuelva el mismo status y el mismo cuerpo que el original, errores incluidos, sin llamarlo.
 
 Además de idéntico en el cable, el reemplazo tiene que ser operable: durable, seguro ante concurrencia, con credenciales revocables y con rastro auditable. Idéntico no alcanza si un reinicio pierde plata: los saldos son de los clientes, no nuestros. Cada token es un cliente con su propio estado, que ningún otro cliente puede leer ni modificar. Cuatro principios rigen el diseño:
 
+<!-- callout info: Principios de diseño -->
+
 1. **Fidelidad del cable sobre elegancia.** Las rarezas del original se conservan; no se corrige el protocolo.
 2. **Pocas piezas.** Cada componente adicional es un punto de falla y se agrega solo lo que el sistema necesita.
 3. **Lo no sondado se nombra como supuesto.** No se afirma un comportamiento sin una prueba repetida.
 4. **El proceso no es la fuente de verdad.** El estado sobrevive al reinicio y no depende de qué instancia atiende el request.
+
+<!-- /callout -->
 
 ## 2. Restricciones y supuestos
 
@@ -34,9 +40,9 @@ Supuestos de diseño, con la razón y lo que pasa si resultan falsos:
 
 Cinco componentes y un proceso aparte. El dominio nunca construye HTTP: devuelve un resultado y el serializador lo convierte en la respuesta exacta del cable. El libro es el único que escribe SQL.
 
-El diagrama de arquitectura acompaña a este documento como archivo aparte (`architecture.png`, figura 1). El API no guarda estado propio: todo lo que hay que recordar vive en la base, así que la cantidad de procesos no cambia el comportamiento.
+El diagrama de arquitectura está en la figura 1 y también como archivo aparte (`architecture.png`). El API no guarda estado propio: todo lo que hay que recordar vive en la base, así que la cantidad de procesos no cambia el comportamiento.
 
-<!-- figura 1: architecture.png -->
+<!-- figure: architecture.png | Figura 1 — Arquitectura de componentes -->
 
 Flujo de un request:
 
@@ -68,10 +74,14 @@ Recibe el mensaje y el cliente autenticado y devuelve un resultado tipado. No co
 
 **La función de control.** Es el riesgo principal y estas son medidas, no intuiciones:
 
+<!-- callout warn: Función de control — Riesgo principal -->
+
 - Es determinista y función pura del mensaje. Payloads repetidos dan el mismo control aunque el estado del cliente haya cambiado, así que no es un nonce ni un contador.
 - No distingue mayúsculas: `CONSULTa;AC-0001;14` y `CONSULTA;AC-0001;14` dan el mismo control.
 - No es un checksum barato. Se probaron offline unas 30 funciones sobre los 20 ejemplos —suma de ordinales, suma ponderada por posición, suma de dígitos, XOR, hashes polinómicos en base 7, 17, 31, 33 y 131, CRC32, Adler32, MD5, SHA1 y SHA256— cruzadas con cinco normalizaciones (crudo, mayúsculas, minúsculas, sin `;` y el mensaje completo), buscando módulo puro para cada `m` entre 2 y 1000 y transformaciones afines módulo 10, 100, 1000, 256, 97, 101 y 128. Cero coincidencias. Se aprende sondeando con el oráculo, no deduciendo.
 - Mientras no esté, el default declarado es aceptar cualquier control numérico. Cuesta los pasos que prueban E202 a propósito, 1 de cada 20 en la muestra visible. Es un supuesto, va escrito como tal, y es mejor que rechazar todo.
+
+<!-- /callout -->
 
 El control es la compuerta. El umbral de la verificación es 20 de 20 sobre los ejemplos y cada uno de esos pasos necesita un control aceptado, así que el control es el paso 1 del orden de implementación, no el último.
 
@@ -249,6 +259,7 @@ reto-2/
   tests/
     api/             rejuego de los 20 ejemplos y comprobaciones puntuales
     explorer/        arnés del sondeo, con transporte falso y sin red
+  tools/             build_pdf.py: docs/design.md -> docs/diseño_caja_negra.pdf
   docs/
 ```
 
