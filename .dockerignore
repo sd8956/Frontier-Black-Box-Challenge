@@ -1,0 +1,17 @@
+# Non-runtime material: the image copies only requirements.txt and api/.
+material/
+docs/
+tests/
+explorer/
+tools/
+migrations/
+*.jsonl
+.env
+.git
+.gitignore
+.codegraph/
+.atl/
+.venv/
+__pycache__/
+*.pyc
+*.pdf

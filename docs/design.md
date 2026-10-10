@@ -269,6 +269,7 @@ No son reglas.
 
 - Cuerpo de una ruta desconocida y de `método no permitido`, `tipo de contenido`, `JSON malformado`, `falta del campo m`, `barra final`, `HEAD`, `OPTIONS` y `GET` sobre `/msg`.
 - `/health` sin token; cuerpo de `__reset`, con token vigente y sin él; cuerpo de `/msg` sin token vigente; JSON roto, `m` ausente o `m` que no es texto.
+- `GET /health` con un token inválido. No se sondeó contra el original: se asume que autentica como el resto y responde 401 `E001`.
 - Orden entre aridad, control y comando; fórmula del control; si el tope es por operación o acumulado.
 - Cuerpo de `/health`.
 - 503 cuando fallamos nosotros; que `ANULA` devuelva el saldo al revertir; que un error no consuma el id. Los ejemplos lo muestran; probable hasta repetirlo.

@@ -29,6 +29,7 @@ SUITES = (
     ("registry", ROOT / "tests" / "api" / "test_registry.py"),
     ("ledger-live", ROOT / "tests" / "api" / "test_ledger_live.py"),
     ("registry-live", ROOT / "tests" / "api" / "test_registry_live.py"),
+    ("adapter-live", ROOT / "tests" / "api" / "test_adapter_live.py"),
     ("explorer", ROOT / "tests" / "explorer" / "test_control.py"),
 )
 

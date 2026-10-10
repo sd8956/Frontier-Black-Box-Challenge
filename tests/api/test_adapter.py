@@ -33,13 +33,66 @@ if str(ROOT) not in sys.path:
 
 from api.adapter import create_server  # noqa: E402
 from api.domain.pipeline import Configuration, ControlStrategy  # noqa: E402
+from api.registry import hash_token  # noqa: E402
 from api.state import MemoryState  # noqa: E402
 
 EXAMPLES_PATH = ROOT / "material" / "pruebas" / "ejemplos.jsonl"
 
-# Test client and token: never read from `.env`.
+# Test client and token: never read from `.env`. The pepper is a test constant
+# too, and it is never printed; the hasher is the real one from the registry.
 TOKEN = "test-token-frontier"
+TEST_PEPPER = "adapter-test-pepper"
 AUTH = "Bearer " + TOKEN
+
+
+def _hasher(secret):
+    """The real `hash_token` bound to the test pepper."""
+    return hash_token(secret, TEST_PEPPER)
+
+
+class _Client:
+    """The resolved-token shape the adapter reads: an `id` and a label."""
+
+    def __init__(self, id, label):
+        self.id = id
+        self.label = label
+
+
+class MemoryBook:
+    """In-file double of the SQL book: the same seam, no database.
+
+    The adapter only needs `transaction`, `resolve_token`, `lock` and
+    `for_client` (plus `reset` for `POST /__reset`), so the offline suite keeps
+    exercising the HTTP frontier without opening a connection or importing the
+    SQL book. `resolve_token` uses the real `hash_token`, so the token path is
+    not faked; only the storage is in memory.
+    """
+
+    def __init__(self, state):
+        self.state = state
+        self._lock = threading.Lock()
+
+    @contextlib.contextmanager
+    def transaction(self):
+        # The per-client lock of the SQL book is released at commit, so this
+        # double serializes the whole transaction the same way.
+        with self._lock:
+            yield None
+
+    def resolve_token(self, cursor, token_hash):
+        if token_hash == _hasher(TOKEN):
+            return _Client(id=1, label="adapter-test")
+        return None
+
+    def lock(self, cursor, client_id):
+        # Taken by `transaction` in this double; the SQL book locks here.
+        return None
+
+    def for_client(self, cursor, client_id):
+        return self.state
+
+    def reset(self, cursor, client_id):
+        self.state = MemoryState(client=self.state.client)
 
 E404_BODY = {"error": "E404", "mensaje": "ruta desconocida"}
 E001_BODY = {"error": "E001", "mensaje": "no autorizado"}
@@ -90,9 +143,9 @@ class Harness:
     """Starts the adapter on loopback port 0 and drives it with urllib."""
 
     def __init__(self, configuration=None):
-        self.state = MemoryState(client="adapter-test")
+        self.book = MemoryBook(MemoryState(client="adapter-test"))
         self.server = create_server(
-            "127.0.0.1", 0, TOKEN, self.state, configuration
+            "127.0.0.1", 0, self.book, _hasher, configuration
         )
         self.thread = threading.Thread(
             target=self.server.serve_forever, daemon=True

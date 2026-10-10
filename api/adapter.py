@@ -1,21 +1,23 @@
 """HTTP frontier adapter.
 
-It is the only place that knows HTTP: routes, the token, JSON parsing and the
-frontier literals. It calls the domain pipeline and then the serializer, so the
-domain never learns HTTP vocabulary and the serializer stays the only place
-that knows the status and JSON keys of a domain result.
+It is the only place that knows HTTP: routes, the auth header, JSON parsing
+and the frontier literals. It calls the domain pipeline and then the
+serializer, so the domain never learns HTTP vocabulary and the serializer stays
+the only place that knows the status and JSON keys of a domain result.
 
 The frontier table (E404, E001, E100, E102 and the two ``{"ok": true}`` bodies)
 lives here as literals, never built by concatenation. The route is resolved
 before the token: any method+path that is not exactly ``POST /msg``,
 ``GET /health`` or ``POST /__reset`` is E404 even when no token is sent.
 
-State is the ``api.state.MemoryState`` adapter behind the domain ``State``
-port. The ledger, its per-client lock and its SQL are a later work unit; until
-then a single in-process client is served and reset by swapping the in-memory
-adapter for an empty one.
+One request, one transaction. The adapter opens it through the injected book,
+resolves the token *inside* it (so a revocation committed mid-request cannot be
+confirmed), takes the per-client lock, binds the domain state with
+``for_client`` and answers only after the transaction committed. The book owns
+all the SQL and the hasher owns the pepper; the adapter owns neither and never
+reads ``TEAM_TOKEN``.
 
-Runs with: ``TEAM_TOKEN=... python3 -m api.adapter``
+Runs with: ``DATABASE_URL=... REGISTRO_PEPPER=... python3 -m api.adapter``
 """
 
 from __future__ import annotations
@@ -24,14 +26,14 @@ import itertools
 import json
 import os
 import sys
-import threading
 import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from api.domain.pipeline import Configuration, process
+from api.ledger import Book, BookUnavailable
+from api.registry import hash_token
 from api.serializer import serialize
-from api.state import MemoryState
 
 # --- frontier literals, copied from the measured original -----------------
 
@@ -41,6 +43,13 @@ _E100 = (400, {"error": "E100", "mensaje": "json inválido"})
 _E102 = (400, {"error": "E102", "mensaje": "falta m"})
 _HEALTH = (200, {"ok": True})
 _RESET = (200, {"ok": True})
+# The 503 is NOT a measured fact: it is the design's declared assumption for
+# "the database does not answer or the lock does not fire and nothing was
+# committed" (docs/design.md section 4.6). It stays in this table next to the
+# literals copied from the original so the single place that can change it is
+# obvious. An unexpected exception is answered the same way: nothing was
+# committed, so it must not become a framework 500 with a body we never saw.
+_UNAVAILABLE = (503, {"error": "no-disponible"})
 
 # The only three routes that exist. Everything else is E404, whatever the
 # method. Query strings are part of the path and never match.
@@ -52,42 +61,14 @@ _ROUTES = frozenset(
     }
 )
 
+# The header must be exactly ``Bearer <secret>`` with the space. A missing,
+# prefix-less or empty secret never reaches the database. The shape is checked
+# before the transaction; whether the secret is a known token is decided by
+# `resolve_token` inside it.
+_BEARER_PREFIX = "Bearer "
+
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8080
-
-
-# --- per-client state ----------------------------------------------------
-
-class _Session:
-    """One authenticated client: state, configuration and the lock around it.
-
-    The ``State`` port has no ``reset()`` in this work unit (the ledger adds it
-    bound to the client), so a reset swaps the in-memory adapter for an
-    equivalent empty instance that keeps its label. The lock serializes access
-    to the in-memory adapter; the ledger's per-client advisory lock replaces it
-    later.
-    """
-
-    def __init__(self, state, configuration):
-        self.state = state
-        self.configuration = configuration
-        self._lock = threading.Lock()
-
-    def run(self, message):
-        with self._lock:
-            return process(message, self.state, self.configuration)
-
-    def reset(self):
-        with self._lock:
-            self.state = _empty_like(self.state)
-
-
-def _empty_like(state):
-    """Builds an empty adapter of the same type, keeping the client label."""
-    try:
-        return type(state)(client=getattr(state, "client", "test"))
-    except TypeError:
-        return type(state)()
 
 
 def _command_label(message, commands):
@@ -105,15 +86,16 @@ def _command_label(message, commands):
 # --- server and handler --------------------------------------------------
 
 class _Server(ThreadingHTTPServer):
-    """One thread per request; every handler shares the same session."""
+    """One thread per request; every handler shares the same book."""
 
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, address, handler, token, session):
+    def __init__(self, address, handler, book, hasher, configuration):
         super().__init__(address, handler)
-        self.token = token
-        self.session = session
+        self.book = book
+        self.hasher = hasher
+        self.configuration = configuration
         self._request_ids = itertools.count(1)
 
     def next_request_id(self):
@@ -151,34 +133,84 @@ class _Handler(BaseHTTPRequestHandler):
             # Route first: an unknown route is E404 even without a token.
             status, body = _E404
             failure = "ruta"
-        elif not self._authorized():
-            status, body = _E001
-            token_state = (
-                "absent" if self.headers.get("Authorization") is None else "invalid"
-            )
-            failure = "auth"
         else:
-            token_state = "valid"
-            if route == ("GET", "/health"):
-                status, body = _HEALTH
-            elif route == ("POST", "/__reset"):
-                self.server.session.reset()
-                status, body = _RESET
-                committed = True
+            secret = self._bearer_secret()
+            if secret is None:
+                status, body = _E001
+                if self.headers.get("Authorization") is not None:
+                    token_state = "invalid"
+                failure = "auth"
             else:
-                status, body, command = self._handle_message()
-                committed = 200 <= status < 300
+                try:
+                    (
+                        status,
+                        body,
+                        token_state,
+                        command,
+                        committed,
+                        failure,
+                    ) = self._run(route, secret)
+                except BookUnavailable:
+                    # Nothing was committed: the database is down or the lock
+                    # wait hit its cap.
+                    status, body = _UNAVAILABLE
+                    failure = "unavailable"
+                except Exception:  # noqa: BLE001
+                    # The transaction rolled back before this surfaced, so
+                    # nothing was committed either. Keep the body we declared
+                    # rather than a framework 500 nobody ever measured.
+                    status, body = _UNAVAILABLE
+                    failure = "internal"
 
         self._respond(status, body)
         self._log(
             started, route, token_state, command, status, committed, failure
         )
 
-    def _authorized(self):
-        """The header must be exactly ``Bearer <token>``, with the space."""
-        return self.headers.get("Authorization") == "Bearer " + self.server.token
+    def _bearer_secret(self):
+        """The secret of a well-formed ``Bearer <secret>``, or ``None``."""
+        header = self.headers.get("Authorization")
+        if header is None or not header.startswith(_BEARER_PREFIX):
+            return None
+        secret = header[len(_BEARER_PREFIX):]
+        return secret or None
 
-    def _handle_message(self):
+    # --- the authenticated path, inside one transaction ------------------
+
+    def _run(self, route, secret):
+        """Resolves the token, locks the client and runs the route.
+
+        The whole thing happens inside one ``book.transaction()``: the token is
+        re-read here so a revocation committed mid-request cannot be confirmed,
+        and the response is returned only after the context manager commits.
+        The book opens one connection per transaction on purpose: concurrent
+        requests must not share a connection. That is also the seam where a
+        connection pool goes later.
+        """
+        with self.server.book.transaction() as cursor:
+            client = self.server.book.resolve_token(
+                cursor, self.server.hasher(secret)
+            )
+            if client is None:
+                # Unknown, revoked or expired: 401 and nothing is committed.
+                return (*_E001, "invalid", None, False, "auth")
+
+            if route == ("GET", "/health"):
+                # Authentication only; no lock, no client state, no domain.
+                # Dependency-aware readiness lives on the internal admin port.
+                return (*_HEALTH, "valid", None, False, None)
+
+            self.server.book.lock(cursor, client.id)
+
+            if route == ("POST", "/__reset"):
+                self.server.book.reset(cursor, client.id)
+                return (*_RESET, "valid", None, True, None)
+
+            ledger = self.server.book.for_client(cursor, client.id)
+            status, body, command = self._handle_message(ledger)
+            return (status, body, "valid", command, 200 <= status < 300, None)
+
+    def _handle_message(self, ledger):
         """Parses the body in the measured order: JSON, then the ``m`` field."""
         raw = self._read_body()
         if not raw:
@@ -192,9 +224,9 @@ class _Handler(BaseHTTPRequestHandler):
 
         message = payload["m"]
         command = _command_label(
-            message, self.server.session.configuration.commands
+            message, self.server.configuration.commands
         )
-        result = self.server.session.run(message)
+        result = process(message, ledger, self.server.configuration)
         status, body = serialize(result)
         return (status, body, command)
 
@@ -239,27 +271,30 @@ class _Handler(BaseHTTPRequestHandler):
 
 # --- factory and entry point ---------------------------------------------
 
-def create_server(host, port, token, state, configuration=None):
+def create_server(host, port, book, hasher, configuration=None):
     """Builds the HTTP server without starting it.
 
-    The caller owns the thread and the shutdown; the tests use port 0.
+    `book` is the SQL book of `api/ledger.py` (or a double) and `hasher` is
+    `hash_token` with its pepper already bound. The caller owns the thread and
+    the shutdown; the tests use port 0.
     """
-    session = _Session(state, configuration or Configuration())
-    return _Server((host, port), _Handler, token, session)
+    return _Server(
+        (host, port),
+        _Handler,
+        book,
+        hasher,
+        configuration or Configuration(),
+    )
 
 
 def main():
-    token = os.environ.get("TEAM_TOKEN")
-    if not token:
-        print("TEAM_TOKEN is required", file=sys.stderr)
-        return 2
     host = os.environ.get("HOST", DEFAULT_HOST)
     try:
         port = int(os.environ.get("PORT", str(DEFAULT_PORT)))
     except ValueError:
         port = DEFAULT_PORT
 
-    server = create_server(host, port, token, MemoryState(client="primary"))
+    server = create_server(host, port, Book(), hash_token)
     print(f"listening on {host}:{port}", flush=True)
     try:
         server.serve_forever()
