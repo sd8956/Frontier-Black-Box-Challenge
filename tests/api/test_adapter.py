@@ -8,9 +8,9 @@ order: route before token, then auth, then the ``/msg`` body. Last, the 20
 recorded examples are replayed in order over the adapter against the version-2
 oracle (``tests/api/ejemplos_v2.jsonl``), requiring 20 of 20.
 
-The token is a test constant, never ``.env``. The control strategy is injected
-from the recorded evidence so the replay exercises the HTTP path and not the
-still-unknown control formula: that unknown belongs to the explorer.
+The token is a test constant, never ``.env``. The replay uses the shipped
+default control strategy (``MeasuredControls``), so the HTTP path exercises
+the same measured table the service ships.
 
 Prints one line per case and exits non-zero on failure.
 
@@ -33,7 +33,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from api.adapter import create_server  # noqa: E402
-from api.domain.pipeline import Configuration, ControlStrategy  # noqa: E402
 from api.registry import hash_token  # noqa: E402
 from api.state import MemoryState  # noqa: E402
 
@@ -189,28 +188,6 @@ class Harness:
                 return response.status, _decode(response)
         except urllib.error.HTTPError as error:
             return error.code, _decode(error)
-
-
-def _recorded_configuration() -> Configuration:
-    """Configuration whose control strategy matches the recorded evidence.
-
-    The control formula is unknown; the explorer owns it. The recorded
-    evidence is enough for this test: a step that answered E202 means the
-    original rejected that control, and any other answer (2xx or a later
-    business error) means it accepted it. The strategy is keyed by message,
-    which is how the recorded evidence pins it.
-    """
-    accepted = {
-        record["request"]["m"]
-        for record in load_examples()
-        if record["response"].get("error") != "E202"
-    }
-
-    class _RecordedControl(ControlStrategy):
-        def accept(self, message, control):
-            return message in accepted
-
-    return Configuration(control_strategy=_RecordedControl())
 
 
 # Every row is (name, method, path, expected status, expected body) plus the
@@ -514,7 +491,7 @@ def replay_examples(harness: Harness) -> bool:
 
 
 def main() -> int:
-    harness = Harness(_recorded_configuration())
+    harness = Harness()
     failures = []
     try:
         for case in CASES:

@@ -7,20 +7,21 @@ serializer, and the status and the body are compared with what was recorded.
 Fresh in-memory state per sequence.
 
 This recording is version 1 and it is NOT modified: it is kept as the honest
-oracle it is. Against version 2 it disagrees on eleven steps, all of them
-declared in `KNOWN_DIFFERENCES` and explained by only three measured changes
-plus the pre-existing control default:
+oracle it is. Against version 2 it disagrees on eight steps, all of them
+declared in `KNOWN_DIFFERENCES` and explained by only two measured changes:
 
-  - the default control validator accepts any numeric control, so step 2
-    (`ALTA;Lucia;83`) gives 201 instead of the recorded E202, and its false
-    creation shifts the `AC-` counter at steps 3 and 4 (the pre-existing
-    cascade);
   - version 2 renders `saldo` as a decimal string of units (steps 5, 8, 11 and
     19);
   - version 2 caps a transfer at 50000 cents, so step 10 is rejected and its
     absence cascades into step 11 (`OP-0003` never exists, so steps 13 and 14
     answer E402) and step 18 (the `OP-` counter is one behind);
   - the balance at step 11 also carries the cap cascade.
+
+The control default is no longer a root cause. `MeasuredControls` measured
+`ALTA;Lucia`: it accepts 82 and rejects 83, so step 2 now answers the recorded
+E202 and steps 3 and 4 keep the version-1 account ids. The remaining spot
+checks use the measured control for a measured payload, exactly as the table
+requires.
 
 No step outside the declared set may fail, and the list is the complete truth
 of the comparison: the count is whatever the list leaves. Runs with:
@@ -44,15 +45,12 @@ from api.domain.pipeline import Configuration, process  # noqa: E402
 EXAMPLES_PATH = ROOT / "material" / "pruebas" / "ejemplos.jsonl"
 
 # Steps where version 2 legitimately differs from the version-1 recording.
-# The list is complete: no other step may fail. There are only four root
-# causes: the pre-existing control default (step 2, whose false account
-# creation cascades to 3 and 4), the version-2 balance format, the version-2
-# 50000-cent cap (whose rejected transfer cascades), and the cap's effect on
-# the balance at step 11.
+# The list is complete: no other step may fail. There are only two root
+# causes: the version-2 balance format, and the version-2 50000-cent cap
+# (whose rejected transfer cascades into steps 11, 13, 14 and 18). The old
+# control-default root cause is gone: the measured table rejects 83 for
+# `ALTA;Lucia`, so steps 2, 3 and 4 now match the recording.
 KNOWN_DIFFERENCES = {
-    2: "the default accepts control 83: it responds 201 and not the recorded E202",
-    3: "cascade: the false creation of step 2 consumed AC-0001",
-    4: "cascade: the false creation of step 2 moved the AC- counter on",
     5: "balance format: version 2 answers \"0.00\" where version 1 answered 0",
     8: "balance format: version 2 answers \"400.00\" where version 1 answered 40000",
     10: "cap: version 2 rejects 100000 (over 50000) with E506; version 1 accepted it",
@@ -163,7 +161,7 @@ def test_annul_returns_balance() -> None:
         process(f"DEPOSITO;{account};700;1", state, configuration)
     )
     operation = body["operacionId"]
-    _, body = serialize(process(f"CONSULTA;{account};1", state, configuration))
+    _, body = serialize(process(f"CONSULTA;{account};14", state, configuration))
     _assert(
         body["saldo"] == "7.00",
         f"previous balance {body['saldo']!r} != '7.00'",
@@ -174,7 +172,7 @@ def test_annul_returns_balance() -> None:
         body == {"ok": True, "anulada": operation},
         f"unexpected annulment {body!r}",
     )
-    _, body = serialize(process(f"CONSULTA;{account};1", state, configuration))
+    _, body = serialize(process(f"CONSULTA;{account};14", state, configuration))
     _assert(
         body["saldo"] == "0.00",
         f"annulling did not return the balance: it was left at {body['saldo']!r}",
@@ -221,9 +219,9 @@ def test_limit_exceeded() -> None:
     source = body["cuentaId"]
     _, body = serialize(process("ALTA;B;1", state, configuration))
     destination = body["cuentaId"]
-    process(f"DEPOSITO;{source};250000;1", state, configuration)
+    process(f"DEPOSITO;{source};250000;86", state, configuration)
     status, body = serialize(
-        process(f"TRANSFER;{source};{destination};120000;1", state, configuration)
+        process(f"TRANSFER;{source};{destination};120000;55", state, configuration)
     )
     _assert(status == 422, f"status {status} != 422")
     _assert(body["error"] == "E506", f"error {body['error']!r} != E506")
@@ -239,7 +237,7 @@ def test_insufficient_balance() -> None:
     destination = body["cuentaId"]
     process(f"DEPOSITO;{source};700;1", state, configuration)
     status, body = serialize(
-        process(f"TRANSFER;{source};{destination};50000;1", state, configuration)
+        process(f"TRANSFER;{source};{destination};50000;59", state, configuration)
     )
     _assert(status == 422, f"status {status} != 422")
     _assert(body["error"] == "E507", f"error {body['error']!r} != E507")

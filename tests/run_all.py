@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SUITES = (
     ("api", ROOT / "tests" / "api" / "test_examples.py"),
     ("v2", ROOT / "tests" / "api" / "test_v2.py"),
+    ("control-table", ROOT / "tests" / "api" / "test_control_table.py"),
     ("adapter", ROOT / "tests" / "api" / "test_adapter.py"),
     ("ledger", ROOT / "tests" / "api" / "test_ledger.py"),
     ("registry", ROOT / "tests" / "api" / "test_registry.py"),

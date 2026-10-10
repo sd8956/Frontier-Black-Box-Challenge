@@ -10,20 +10,20 @@ block). Each line here carries the `source_id` of the incident record it was
 taken from. Nothing was re-derived by hand.
 
 Two replays run, both over a fresh `MemoryState` and the real pipeline and
-serializer:
+serializer, and both must reach 20 of 20:
 
-  - the recorded control strategy (the one the adapter suite already has as
-    `_recorded_configuration`): a control that the recording shows was rejected
-    with E202 is rejected, any other is accepted. It must reach 20 of 20.
-  - the shipped default strategy (`AcceptAnyNumericControl`): it cannot compute
-    the control of step 2 (`ALTA;Lucia;83`). That is the single declared
-    difference at the control level: it agrees with the recording on 19 of 20.
-    The full replay is honest about the rest: the false creation at step 2
-    shifts the `AC-` ids of steps 3 and 4, so 3 steps differ from the oracle,
-    not 1.
+  - the recorded control strategy (keyed by the recorded messages): a control
+    that the recording shows was rejected with E202 is rejected, any other is
+    accepted;
+  - the shipped default strategy (`MeasuredControls`). It is keyed by the
+    measured payload, so `ALTA;Lucia` accepts 82 and rejects 83: step 2 now
+    answers the recorded E202 and its old cascade over steps 3 and 4 is gone.
+    The previously declared control difference no longer exists, so nothing is
+    declared here anymore.
 
-It also pins the three changes directly. Prints one line per case and exits
-non-zero on failure.
+It also pins the three changes directly. The direct business cases use the
+measured control of each measured payload, because the shipped default is now
+the measured table. Prints one line per case and exits non-zero on failure.
 
 Runs with: ``python3 tests/api/test_v2.py``
 """
@@ -159,22 +159,22 @@ def _t_balance_string():
     account = created["cuentaId"]
 
     status, body = serialize(
-        process(f"CONSULTA;{account};1", state, configuration)
+        process(f"CONSULTA;{account};14", state, configuration)
     )
     assert (status, body) == (
         200,
         {"cuenta_id": account, "saldo": "0.00"},
     ), (status, body)
 
-    process(f"DEPOSITO;{account};12345;1", state, configuration)
-    _, body = serialize(process(f"CONSULTA;{account};1", state, configuration))
+    process(f"DEPOSITO;{account};12345;96", state, configuration)
+    _, body = serialize(process(f"CONSULTA;{account};14", state, configuration))
     assert body["saldo"] == "123.45", body
 
     state = MemoryState()
     _, created = serialize(process("ALTA;B;1", state, configuration))
     account = created["cuentaId"]
-    process(f"DEPOSITO;{account};250000;1", state, configuration)
-    _, body = serialize(process(f"CONSULTA;{account};1", state, configuration))
+    process(f"DEPOSITO;{account};250000;86", state, configuration)
+    _, body = serialize(process(f"CONSULTA;{account};14", state, configuration))
     assert body["saldo"] == "2500.00", body
 
 
@@ -185,15 +185,15 @@ def _t_cap():
     _, source = serialize(process("ALTA;A;1", state, configuration))
     _, destination = serialize(process("ALTA;B;1", state, configuration))
     src, dst = source["cuentaId"], destination["cuentaId"]
-    process(f"DEPOSITO;{src};250000;1", state, configuration)
+    process(f"DEPOSITO;{src};250000;86", state, configuration)
 
     status, body = serialize(
-        process(f"TRANSFER;{src};{dst};50000;1", state, configuration)
+        process(f"TRANSFER;{src};{dst};50000;59", state, configuration)
     )
     assert status == 200 and body["status"] == "recieved", (status, body)
 
     status, body = serialize(
-        process(f"TRANSFER;{src};{dst};50001;1", state, configuration)
+        process(f"TRANSFER;{src};{dst};50001;56", state, configuration)
     )
     assert status == 422 and body["error"] == "E506", (status, body)
 
@@ -205,7 +205,7 @@ def _t_deposit_exempt():
     _, created = serialize(process("ALTA;A;1", state, configuration))
     account = created["cuentaId"]
     status, body = serialize(
-        process(f"DEPOSITO;{account};250000;1", state, configuration)
+        process(f"DEPOSITO;{account};250000;86", state, configuration)
     )
     assert status == 200 and body["status"] == "recieved", (status, body)
 
@@ -278,34 +278,19 @@ def main() -> int:
 
     print("\n== version-2 replay (shipped default) ==")
     default_matches, default_mismatches = replay(Configuration())
-    declared = {2, 3, 4}
     for n, status, body, expected_status, expected_body in default_mismatches:
-        reason = (
-            "declared: step 2 cannot compute the control"
-            if n == 2
-            else "declared: cascade of the false creation at step 2"
-        )
         print(
-            "step %2d: known difference (%s); got %s %r, expected %s %r"
-            % (n, reason, status, body, expected_status, expected_body)
+            "step %2d: got %s %r, expected %s %r"
+            % (n, status, body, expected_status, expected_body)
         )
     print("%d de %d" % (default_matches, len(load_examples())))
 
     print("\n== default control agreement with the recording ==")
     agreement, differing = control_agreement()
-    print(
-        "%d de %d (diferencia declarada: paso %s)"
-        % (agreement, len(load_examples()), differing)
-    )
+    print("%d de %d" % (agreement, len(load_examples())))
 
     print("\n== direct cases ==")
     failures = run_tests()
-
-    unknown = [
-        n
-        for n, _s, _b, _es, _eb in default_mismatches
-        if n not in declared
-    ]
 
     problems = []
     if recorded_matches != len(load_examples()):
@@ -314,20 +299,20 @@ def main() -> int:
         )
     if recorded_mismatches:
         problems.append("recorded replay has mismatches")
-    if unknown:
-        problems.append("default replay has unknown differences: %s" % unknown)
-    if default_matches != len(load_examples()) - len(declared):
+    if default_mismatches:
         problems.append(
-            "default replay %d/%d (only the declared cascade may differ)"
-            % (default_matches, len(load_examples()))
+            "default replay has mismatches: %s"
+            % [n for n, _s, _b, _es, _eb in default_mismatches]
         )
-    if agreement != len(load_examples()) - 1:
+    if agreement != len(load_examples()):
         problems.append(
             "default control agreement %d/%d"
             % (agreement, len(load_examples()))
         )
-    if differing != [2]:
-        problems.append("default control difference is not only step 2: %s" % differing)
+    if differing:
+        problems.append(
+            "default control differs from the recording: %s" % differing
+        )
     if failures:
         problems.append("%d direct case(s) failed" % failures)
 

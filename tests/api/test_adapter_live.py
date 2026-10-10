@@ -15,7 +15,7 @@ Covered, with the numbers it observes:
 
   - the 20 recorded examples replayed through the whole stack over HTTP against
     the version-2 oracle (``tests/api/ejemplos_v2.jsonl``), requiring 20 of 20
-    with the recorded control strategy;
+    with the shipped default control strategy;
   - an unknown token is 401;
   - a revoked token is 401;
   - ``POST /__reset`` really clears one client (the balance is gone) while the
@@ -44,7 +44,7 @@ if str(ROOT) not in sys.path:
 import psycopg2  # noqa: E402
 
 from api.adapter import create_server  # noqa: E402
-from api.domain.pipeline import Configuration, ControlStrategy  # noqa: E402
+from api.domain.pipeline import Configuration  # noqa: E402
 from api.ledger import Book  # noqa: E402
 from api.registry import Registry, hash_token  # noqa: E402
 
@@ -93,27 +93,6 @@ def load_examples() -> list[dict]:
             if line.strip():
                 records.append(json.loads(line))
     return records
-
-
-def _recorded_configuration() -> Configuration:
-    """The recorded control strategy the offline adapter suite already uses.
-
-    The control formula is unknown; the explorer owns it. A step that answered
-    E202 means the original rejected that control, and any other answer means
-    it accepted it. The strategy is keyed by message, which is how the recorded
-    evidence pins it.
-    """
-    accepted = {
-        record["request"]["m"]
-        for record in load_examples()
-        if record["response"].get("error") != "E202"
-    }
-
-    class _RecordedControl(ControlStrategy):
-        def accept(self, message, control):
-            return message in accepted
-
-    return Configuration(control_strategy=_RecordedControl())
 
 
 class Harness:
@@ -195,7 +174,7 @@ class Fixture:
             self.secrets[name] = secret
         # Keep two valid so the last-valid refusal cannot fire.
         self.registry.revoke(self.label("revoked"), "adapter-live")
-        self.replay = Harness(self.book, _recorded_configuration())
+        self.replay = Harness(self.book, Configuration())
         self.sql = Harness(self.book, Configuration())
 
     def close(self) -> None:
@@ -288,7 +267,7 @@ def _case_reset_isolation(fixture: Fixture) -> str:
     )
     assert status == 200 and body.get("operacionId") == "OP-0001", (status, body)
     status, body = harness.call(
-        "POST", "/msg", auth=auth_a, json_body={"m": "CONSULTA;AC-0001;1"}
+        "POST", "/msg", auth=auth_a, json_body={"m": "CONSULTA;AC-0001;14"}
     )
     assert status == 200 and body.get("saldo") == "7.00", (status, body)
 
@@ -305,12 +284,12 @@ def _case_reset_isolation(fixture: Fixture) -> str:
     assert status == 200 and body == OK_BODY, (status, body)
 
     status, body = harness.call(
-        "POST", "/msg", auth=auth_a, json_body={"m": "CONSULTA;AC-0001;1"}
+        "POST", "/msg", auth=auth_a, json_body={"m": "CONSULTA;AC-0001;14"}
     )
     assert status == 404 and body == E401_BODY, (status, body)
 
     status, body = harness.call(
-        "POST", "/msg", auth=auth_b, json_body={"m": "CONSULTA;AC-0001;1"}
+        "POST", "/msg", auth=auth_b, json_body={"m": "CONSULTA;AC-0001;14"}
     )
     assert status == 200 and body.get("saldo") == "3.00", (status, body)
     return "A's balance gone after reset; B kept AC-0001/3.00"

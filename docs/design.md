@@ -79,7 +79,7 @@ Recibe el mensaje y el cliente autenticado y devuelve un resultado tipado. No co
 - Es determinista y función pura del mensaje. Payloads repetidos dan el mismo control aunque el estado del cliente haya cambiado, así que no es un nonce ni un contador.
 - No distingue mayúsculas: `CONSULTa;AC-0001;14` y `CONSULTA;AC-0001;14` dan el mismo control.
 - No es un checksum barato. Se probaron offline unas 30 funciones sobre los 20 ejemplos —suma de ordinales, suma ponderada por posición, suma de dígitos, XOR, hashes polinómicos en base 7, 17, 31, 33 y 131, CRC32, Adler32, MD5, SHA1 y SHA256— cruzadas con cinco normalizaciones (crudo, mayúsculas, minúsculas, sin `;` y el mensaje completo), buscando módulo puro para cada `m` entre 2 y 1000 y transformaciones afines módulo 10, 100, 1000, 256, 97, 101 y 128. Cero coincidencias. Se aprende sondeando con el oráculo, no deduciendo.
-- Mientras no esté, el default declarado es aceptar cualquier control numérico. Cuesta los pasos que prueban E202 a propósito, 1 de cada 20 en la muestra visible. Es un supuesto, va escrito como tal, y es mejor que rechazar todo.
+- Mientras no esté la fórmula, el default es la tabla medida (`MeasuredControls`): para un payload sondeado acepta solo el control que la tabla registró y rechaza el resto; para uno no sondeado, aceptar cualquier control numérico sigue siendo un supuesto declarado, escrito como tal.
 
 <!-- /callout -->
 
@@ -270,7 +270,7 @@ No son reglas.
 - Cuerpo de una ruta desconocida y de `método no permitido`, `tipo de contenido`, `JSON malformado`, `falta del campo m`, `barra final`, `HEAD`, `OPTIONS` y `GET` sobre `/msg`.
 - `/health` sin token; cuerpo de `__reset`, con token vigente y sin él; cuerpo de `/msg` sin token vigente; JSON roto, `m` ausente o `m` que no es texto.
 - `GET /health` con un token inválido. No se sondeó contra el original: se asume que autentica como el resto y responde 401 `E001`.
-- Orden entre aridad, control y comando; fórmula del control; si el tope es por operación o acumulado.
+- Orden entre aridad, control y comando; la fórmula del control sigue sin descubrirse: solo se conoce el control medido de los payloads sondeados; si el tope es por operación o acumulado.
 - Cuerpo de `/health`.
 - 503 cuando fallamos nosotros; que `ANULA` devuelva el saldo al revertir; que un error no consuma el id. Los ejemplos lo muestran; probable hasta repetirlo.
 - `E104` (`{"error": "E104", "mensaje": "segmento vacío"}`) ante un segmento vacío: medido una sola vez, en `PING;64;`; probable hasta repetirlo.
